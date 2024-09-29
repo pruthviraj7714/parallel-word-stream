@@ -2,23 +2,23 @@
 
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { Mic, Play, Type, Volume2, VolumeX, Loader2 } from "lucide-react";
+import { Mic2Icon, Play, Volume2, VolumeX, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { BACKEND_URL } from "@/config";
 import { toast } from "sonner";
-
+import { Link } from "react-router-dom";
 
 export default function ParallelWordStreaming() {
   const [paragraph, setParagraph] = useState("");
   const [text, setText] = useState("");
-  const [highlightedText, setHighlightedText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentLine, setCurrentLine] = useState("");
   const audioContext = useRef(
     new (window.AudioContext || window.webkitAudioContext)()
   );
@@ -41,6 +41,15 @@ export default function ParallelWordStreaming() {
 
   const convertTextToSpeech = async () => {
     setIsLoading(true);
+
+    setCurrentLine("");
+
+    if (paragraph.length > 300) {
+      toast.error("Paragraph Length Should be Less than 300 characters");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const res = await axios.post(`${BACKEND_URL}/read-paragraph`, {
         paragraph,
@@ -59,10 +68,42 @@ export default function ParallelWordStreaming() {
           audioSource.current = audioContext.current.createBufferSource();
           audioSource.current.buffer = decodedAudio;
           audioSource.current.connect(gainNode.current);
-          audioSource.current.start(0);
-          setIsPlaying(true);
 
-          syncTextWithAudio(returnedText, decodedAudio.duration);
+          const processAudio = () => {
+            return new Promise((resolve) => {
+              setTimeout(() => {
+                audioSource.current.start(0);
+                resolve("Audio Done");
+              }, 300);
+            });
+          };
+
+          const printParagraph = () => {
+            return new Promise((resolve) => {
+              let currIndex = 0;
+              const words = returnedText.split(" ");
+
+              const printNextWord = () => {
+                if (currIndex < words.length) {
+                  setCurrentLine((prev) => prev + " " + words[currIndex++]);
+                  setTimeout(printNextWord, 300);
+                } else {
+                  resolve("Paragraph Done");
+                }
+              };
+
+              printNextWord();
+            });
+          };
+
+          Promise.all([processAudio(), printParagraph()])
+            .then(([audioResult, paragraphResult]) => {
+              console.log(audioResult, paragraphResult);
+            })
+            .finally(() => {
+              setParagraph("");
+              setIsPlaying(false);
+            });
 
           audioSource.current.onended = () => {
             setIsPlaying(false);
@@ -70,33 +111,14 @@ export default function ParallelWordStreaming() {
         })
         .catch((error) => {
           console.error("Error decoding audio:", error);
+          toast.error("Error decoding audio");
         });
     } catch (error) {
       console.error("Error fetching or processing audio:", error.message);
-      toast.error("Error fetching or processing audio")
+      toast.error("Error fetching or processing audio");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const syncTextWithAudio = (text, audioDuration) => {
-    const words = text.split(" ");
-    const totalWords = words.length;
-    const wordDuration = audioDuration / totalWords;
-
-    let wordIndex = 0;
-
-    const highlightNextWord = () => {
-      if (wordIndex < totalWords) {
-        const nextHighlightedText = words.slice(0, wordIndex + 1).join(" ");
-        setHighlightedText(nextHighlightedText);
-        wordIndex++;
-
-        setTimeout(highlightNextWord, wordDuration * 1000);
-      }
-    };
-
-    highlightNextWord();
   };
 
   const toggleMute = () => {
@@ -108,9 +130,16 @@ export default function ParallelWordStreaming() {
   };
 
   return (
-    <div className="flex flex-col justify-center items-center min-h-screen bg-gradient-to-b from-blue-400 to-purple-500 p-8">
-      <div>
-        <Card className=" w-[540px]">
+    <div className="flex flex-col items-center min-h-screen bg-gradient-to-b from-blue-400 to-purple-500">
+      <Link
+        to={"/"}
+        className="flex items-center gap-1.5 bg-white px-3 h-12 w-screen"
+      >
+        <Mic2Icon />
+        <span className="font-semibold text-lg">ParallelStream</span>
+      </Link>
+      <div className="mt-32">
+        <Card className="w-[370px] md:w-[430px] lg:w-[540px]">
           <CardHeader>
             <CardTitle className="text-3xl font-bold text-center text-primary">
               Parallel Word Streaming
@@ -121,7 +150,6 @@ export default function ParallelWordStreaming() {
               <Textarea
                 className="w-full min-h-[200px] p-4 text-lg"
                 placeholder="Enter paragraph here..."
-                value={paragraph}
                 onChange={(e) => setParagraph(e.target.value)}
               />
             </div>
@@ -156,13 +184,8 @@ export default function ParallelWordStreaming() {
               {text && (
                 <div className="mt-6 p-4 bg-white rounded-lg shadow-inner overflow-hidden">
                   <p className="text-xl leading-relaxed">
-                    <span
-                      className="text-primary font-medium"
-                    >
-                      {highlightedText}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {text.slice(highlightedText.length)}
+                    <span className="text-primary font-medium">
+                      {currentLine}
                     </span>
                   </p>
                 </div>

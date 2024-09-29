@@ -85,7 +85,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="container mx-auto px-4 py-8 text-center text-white">
-        <p>&copy; 2023 ParallelStream. All rights reserved.</p>
+        <p>&copy; 2024 ParallelStream. All rights reserved.</p>
       </footer>
     </div>
   )
