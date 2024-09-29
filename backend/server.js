@@ -16,7 +16,7 @@ const paragraphSchema = z.object({
   paragraph: z
     .string()
     .min(5, { message: "Paragraph should be at least of 5 characters" })
-    .max(100, { message: "Paragraph should be no more than 100 characters" }),
+    .max(300, { message: "Paragraph should be no more than 100 characters" }),
 });
 
 app.post("/read-paragraph", async (req, res) => {
