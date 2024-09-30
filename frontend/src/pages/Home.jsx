@@ -19,6 +19,7 @@ export default function ParallelWordStreaming() {
   const [volume, setVolume] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentLine, setCurrentLine] = useState("");
+  const [currIndex, setCurrIndex] = useState(0);
   const audioContext = useRef(
     new (window.AudioContext || window.webkitAudioContext)()
   );
@@ -39,80 +40,67 @@ export default function ParallelWordStreaming() {
     }
   }, [volume, isMuted]);
 
-  const convertTextToSpeech = async () => {
-    setIsLoading(true);
-
-    setCurrentLine("");
+  const convertTextToSpeech = async (para, index = 0) => {
+    if(index == 0) {
+      setIsLoading(true);
+      setCurrentLine("");
+    }
 
     if (paragraph.length > 300) {
       toast.error("Paragraph Length Should be Less than 300 characters");
       setIsLoading(false);
       return;
     }
-
+  
     try {
       const res = await axios.post(`${BACKEND_URL}/read-paragraph`, {
-        paragraph,
+        paragraph: para,
       });
       const { audioBuffer: base64Audio, paragraph: returnedText } = res.data;
-
+  
       setText(returnedText);
-
+  
       const audioBuffer = Uint8Array.from(atob(base64Audio), (c) =>
         c.charCodeAt(0)
       ).buffer;
-
-      audioContext.current
-        .decodeAudioData(audioBuffer)
-        .then((decodedAudio) => {
-          audioSource.current = audioContext.current.createBufferSource();
-          audioSource.current.buffer = decodedAudio;
-          audioSource.current.connect(gainNode.current);
-
-          const processAudio = () => {
-            return new Promise((resolve) => {
-              setTimeout(() => {
-                audioSource.current.start(0);
-                resolve("Audio Done");
-              }, 300);
-            });
-          };
-
-          const printParagraph = () => {
-            return new Promise((resolve) => {
-              let currIndex = 0;
-              const words = returnedText.split(" ");
-
-              const printNextWord = () => {
-                if (currIndex < words.length) {
-                  setCurrentLine((prev) => prev + " " + words[currIndex++]);
-                  setTimeout(printNextWord, 300);
-                } else {
-                  resolve("Paragraph Done");
-                }
-              };
-
-              printNextWord();
-            });
-          };
-
-          Promise.all([processAudio(), printParagraph()])
-            .then(([audioResult, paragraphResult]) => {
-              console.log(audioResult, paragraphResult);
-            })
-            .finally(() => {
-              setParagraph("");
-              setIsPlaying(false);
-            });
-
-          audioSource.current.onended = () => {
+  
+      audioContext.current.decodeAudioData(audioBuffer).then((decodedAudio) => {
+        audioSource.current = audioContext.current.createBufferSource();
+        audioSource.current.buffer = decodedAudio;
+        audioSource.current.connect(gainNode.current);
+  
+        const words = returnedText.split(" ");
+        let currentWordIndex = 0;
+  
+        const printNextWord = () => {
+          if (currentWordIndex < words.length) {
+            setCurrentLine((prev) => prev + " " + words[currentWordIndex++]);
+            setTimeout(printNextWord, 300);
+          }
+        };
+  
+        printNextWord();
+  
+        audioSource.current.start(0);
+        setIsPlaying(true);
+  
+        audioSource.current.onended = () => {
+          const nextIndex = index + 1;
+          const sentences = paragraph.split(".");
+          if (nextIndex < sentences.length - 1) {
+            setCurrIndex(nextIndex); 
+            convertTextToSpeech(sentences[nextIndex].trim(), nextIndex);
+          } else {
             setIsPlaying(false);
-          };
-        })
-        .catch((error) => {
-          console.error("Error decoding audio:", error);
-          toast.error("Error decoding audio");
-        });
+            setIsLoading(false);
+            setCurrIndex(0); 
+            return;
+          }
+        };
+      }).catch((error) => {
+        console.error("Error decoding audio:", error);
+        toast.error("Error decoding audio");
+      });
     } catch (error) {
       console.error("Error fetching or processing audio:", error.message);
       toast.error("Error fetching or processing audio");
@@ -155,7 +143,10 @@ export default function ParallelWordStreaming() {
             </div>
             <div className="flex space-x-4">
               <Button
-                onClick={convertTextToSpeech}
+                onClick={() => {
+                  convertTextToSpeech(paragraph.split(".")[currIndex]);
+                  setCurrIndex(currIndex + 1);
+                }}
                 disabled={isLoading || !paragraph || isPlaying}
                 className="flex-1"
               >
